@@ -1,0 +1,156 @@
+#!/usr/bin/env python
+
+import json
+from pathlib import Path
+import sys
+import argparse
+import os
+import platform
+import subprocess
+from typing import Literal, Optional, TypedDict
+
+def main():
+    args = sys.argv[1:]
+    if args and not args[0].startswith('_') and not args[0].startswith('-'):
+        args = ['_run', *args]
+    elif not args:
+        args = ['--help']
+    ns = vars(parser.parse_args(args))
+    cmd = ns['command']
+    del ns['command']
+    for i in globals():
+        if i == cmd:
+            globals()[i](**ns)
+            return
+    raise BaseException(f'No command function {cmd} found in global scope')
+
+def open_with_default(file_or_url):
+    """
+    使用系统默认应用打开文件或链接。
+
+    :param file_or_url: 文件路径或URL
+    """
+    system = platform.system()
+    if system == "Windows":
+        os.startfile(file_or_url)
+    elif system == "Darwin":  # macOS
+        subprocess.run(["open", file_or_url], check=True)
+    else:  # Linux and other Unix-like systems
+        subprocess.run(["xdg-open", file_or_url], check=True)
+
+class Shortcut(TypedDict):
+    id: str
+    type: Literal['URL', 'FILE', 'CMD']
+    path: str
+    run_count: int
+
+class Config(TypedDict):
+    shortcuts: list[Shortcut]
+
+def config_location():
+    if 'SM_CONF_LOCATION' in os.environ:
+        target = Path(os.environ['SM_CONF_LOCATION'])
+        target.parent.mkdir(exist_ok=True)
+    else:
+        target = Path(__file__).with_name('sm_config.json')
+    return target
+
+def default_config() -> Config:
+    return {
+        'shortcuts': []
+    }
+
+def read_config() -> Config:
+    if not config_location().exists():
+        config = default_config()
+        save_config(config)
+        return config
+    return json.loads(config_location().read_text(encoding='utf-8'))
+
+def save_config(config: Config) -> Config:
+    config_location().write_text(json.dumps(config, ensure_ascii=False, indent=4), 'utf-8')
+
+def id_match(id_part: Optional[str], id: str) -> bool:
+    """
+    检查 id_part 是否是字符串 id 的非连续子串。
+    
+    :param id_part: 要检查的子串
+    :param id: 原始字符串
+    :return: 如果 id_part 是 main 的非连续子串，返回 True；否则返回 False
+    """
+    if not id_part:
+        return True
+    it = iter(id)  # 创建 main 的迭代器
+    return all(char in it for char in id_part)
+
+parser = argparse.ArgumentParser(
+    description="A Shortcut Manager for Opening file or url with simple command", # 描述，在帮助命令中显示
+    epilog=f"Example usage: {sys.argv[0]} some_shortcut_id_substr; {sys.argv[0]} _ls" # 例子，在帮助命令中显示
+)
+
+subparsers = parser.add_subparsers(title='COMMAND', required=True, dest='command', description='subcommands')
+
+run_cmd = subparsers.add_parser('_run', help='Run shortcut by shortcut id subsequence (default command when first argument is not startswith _)', description='Run shortcut by shortcut id subsequence, throw errors when ambiguous shortcuts founded. try to alias this')
+run_cmd.add_argument('shortcut_id_part', type=str, help='Non-contiguous substring of shortcut ID')
+def _run(shortcut_id_part: str):
+    conf = read_config()
+    valid_shortcuts = [i for i in conf['shortcuts'] if id_match(shortcut_id_part, i['id'])]
+    if len(valid_shortcuts) == 0:
+        print('No shortcut matches', file=sys.stderr)
+        sys.exit(1)
+    if len(valid_shortcuts) != 1:
+        print('Multiple shortcuts matched', file=sys.stderr)
+        format_print(valid_shortcuts, stream=sys.stderr)
+        sys.exit(1)
+    open_with_default(valid_shortcuts[0]['path'])
+    valid_shortcuts[0]['run_count'] += 1
+    save_config(conf)
+
+ls_cmd = subparsers.add_parser('_ls', help='List shortcuts')
+ls_cmd.add_argument('shortcut_id_part', type=str, nargs=argparse.OPTIONAL, help='Non-contiguous substring of shortcut ID')
+def _ls(shortcut_id_part: Optional[str]):
+    conf = read_config()
+    valid_shortcuts = [i for i in conf['shortcuts'] if id_match(shortcut_id_part, i['id'])]
+    # if not valid_shortcuts:
+    #     if not shortcut_id_part:
+    #         print('No shortcut yet')
+    #     else:
+    #         print('No shortcut matches')
+    #     sys.exit(0)
+    format_print(valid_shortcuts, True)
+
+    
+add_file_cmd = subparsers.add_parser('_add_file', help='Add file shortcut')
+add_file_cmd.add_argument('shortcut_id', type=str, help='Shortcut ID')
+add_file_cmd.add_argument('shortcut_path', type=str, help='Shortcut Path')
+def _add_file(shortcut_id: str, shortcut_path: str):
+    if not Path(shortcut_path).exists():
+        print(f"file '{shortcut_path}' does not exist", file=sys.stderr)
+        sys.exit(1)
+    conf = read_config()
+    if next((i for i in conf['shortcuts'] if i['id'] == shortcut_id), None):
+        print(f"duplicate shortcut id '{shortcut_path}'", file=sys.stderr)
+        sys.exit(1)
+    conf['shortcuts'].append({'id': shortcut_id, 'type': 'FILE', 'path': shortcut_path})
+    save_config(conf)
+    
+def format_print(shortcuts: list[Shortcut], with_header: bool = False, stream = sys.stdout):
+    if with_header:
+        shortcuts = [{'id': 'ID', 'path': 'PATH', 'type': 'TYPE', 'run_count': 'RUN_COUNT'}, *shortcuts]
+    if not shortcuts:
+        return print()
+    id_len = max([len(i['id']) for i in shortcuts])
+    type_len = max([len(i['type']) for i in shortcuts])
+    path_len = max([len(i['path']) for i in shortcuts])
+    run_count_len = max([len(str(i['run_count'])) for i in shortcuts])
+    
+    for shortcut in shortcuts:
+        print(f'{shortcut['id']:<{id_len + 1}} {shortcut['type']:<{type_len + 1}} {shortcut['path']:<{path_len + 1}} {shortcut['run_count']:<{run_count_len + 1}}', file=stream)
+    
+
+
+# parser.add_argument('shortcut_id_part', type=str, help='Non-contiguous substring of shortcut ID')
+
+
+if __name__ == '__main__':
+    main()
