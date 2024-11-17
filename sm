@@ -83,9 +83,10 @@ def id_match(id_part: Optional[str], id: str) -> bool:
     it = iter(id)  # 创建 main 的迭代器
     return all(char in it for char in id_part)
 
+script_name = Path(__file__).name
 parser = argparse.ArgumentParser(
     description="A Shortcut Manager for Opening file or url with simple command", # 描述，在帮助命令中显示
-    epilog=f"Example usage: {sys.argv[0]} some_shortcut_id_substr; {sys.argv[0]} _ls" # 例子，在帮助命令中显示
+    epilog=f"Example usage: {script_name} some_shortcut_id_part; {script_name} _ls" # 例子，在帮助命令中显示
 )
 
 subparsers = parser.add_subparsers(title='COMMAND', required=True, dest='command', description='subcommands')
@@ -119,7 +120,6 @@ def _ls(shortcut_id_part: Optional[str]):
     #     sys.exit(0)
     format_print(valid_shortcuts, True)
 
-    
 add_file_cmd = subparsers.add_parser('_add_file', help='Add file shortcut')
 add_file_cmd.add_argument('shortcut_id', type=str, help='Shortcut ID')
 add_file_cmd.add_argument('shortcut_path', type=str, help='Shortcut Path')
@@ -131,9 +131,19 @@ def _add_file(shortcut_id: str, shortcut_path: str):
     if next((i for i in conf['shortcuts'] if i['id'] == shortcut_id), None):
         print(f"duplicate shortcut id '{shortcut_path}'", file=sys.stderr)
         sys.exit(1)
-    conf['shortcuts'].append({'id': shortcut_id, 'type': 'FILE', 'path': shortcut_path})
+    conf['shortcuts'].append({'id': shortcut_id, 'type': 'FILE', 'path': shortcut_path, 'run_count': 0})
     save_config(conf)
+
+entries_cmd = subparsers.add_parser('_entries', help='get all entries for auto-completation')
+def _entries():
+    cmds = (i for i in globals().keys() if i.startswith('_') and not i.startswith('__')) 
+    shortcuts = (i['id'] for i in read_config()['shortcuts'])
+    for i in shortcuts:
+        print(i)
+    for i in cmds:
+        print(i)
     
+
 def format_print(shortcuts: list[Shortcut], with_header: bool = False, stream = sys.stdout):
     if with_header:
         shortcuts = [{'id': 'ID', 'path': 'PATH', 'type': 'TYPE', 'run_count': 'RUN_COUNT'}, *shortcuts]
