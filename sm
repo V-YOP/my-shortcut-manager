@@ -70,16 +70,20 @@ def read_config() -> Config:
 def save_config(config: Config) -> Config:
     config_location().write_text(json.dumps(config, ensure_ascii=False, indent=4), 'utf-8')
 
-def id_match(id_part: Optional[str], id: str) -> bool:
+def id_match(id_part: Optional[str], id: str, ignore_case = True) -> bool:
     """
     检查 id_part 是否是字符串 id 的非连续子串。
     
     :param id_part: 要检查的子串
     :param id: 原始字符串
+    :param ignore_case: 是否忽视大小写
     :return: 如果 id_part 是 main 的非连续子串，返回 True；否则返回 False
     """
     if not id_part:
         return True
+    if ignore_case:
+        id = id.lower()
+        id_part = id_part.lower()
     it = iter(id)  # 创建 main 的迭代器
     return all(char in it for char in id_part)
 
@@ -157,10 +161,7 @@ def format_print(shortcuts: list[Shortcut], with_header: bool = False, stream = 
     for shortcut in shortcuts:
         print(f'{shortcut['id']:<{id_len + 1}} {shortcut['type']:<{type_len + 1}} {shortcut['path']:<{path_len + 1}} {shortcut['run_count']:<{run_count_len + 1}}', file=stream)
     
-
-
 # parser.add_argument('shortcut_id_part', type=str, help='Non-contiguous substring of shortcut ID')
-
 
 if __name__ == '__main__':
     main()
