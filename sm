@@ -38,6 +38,25 @@ def open_with_default(file_or_url):
     else:  # Linux and other Unix-like systems
         subprocess.run(["xdg-open", file_or_url], check=True)
 
+import unicodedata
+
+def calculate_display_length(s):
+    """
+    计算字符串的长度，其中：
+    - 半角字符长度为 1
+    - 全角字符长度为 2
+    """
+    length = 0
+    for char in s:
+        # 获取字符的东亚宽度
+        east_asian_width = unicodedata.east_asian_width(char)
+        if east_asian_width in ['F', 'W', 'A']:
+            length += 3
+        else:
+            length += 1
+    return length
+
+
 class Shortcut(TypedDict):
     id: str
     type: Literal['URL', 'FILE', 'CMD']
@@ -110,12 +129,14 @@ def _run(shortcut_id_part: str):
     open_with_default(valid_shortcuts[0]['path'])
     valid_shortcuts[0]['run_count'] += 1
     save_config(conf)
+    print(f'match "{valid_shortcuts[0]["id"]}"')
 
 ls_cmd = subparsers.add_parser('_ls', help='List shortcuts')
 ls_cmd.add_argument('shortcut_id_part', type=str, nargs=argparse.OPTIONAL, help='Non-contiguous substring of shortcut ID')
 def _ls(shortcut_id_part: Optional[str]):
     conf = read_config()
     valid_shortcuts = [i for i in conf['shortcuts'] if id_match(shortcut_id_part, i['id'])]
+    valid_shortcuts.sort(key=lambda x: x['run_count'], reverse=True)
     # if not valid_shortcuts:
     #     if not shortcut_id_part:
     #         print('No shortcut yet')
@@ -153,13 +174,20 @@ def format_print(shortcuts: list[Shortcut], with_header: bool = False, stream = 
         shortcuts = [{'id': 'ID', 'path': 'PATH', 'type': 'TYPE', 'run_count': 'RUN_COUNT'}, *shortcuts]
     if not shortcuts:
         return print()
-    id_len = max([len(i['id']) for i in shortcuts])
-    type_len = max([len(i['type']) for i in shortcuts])
-    path_len = max([len(i['path']) for i in shortcuts])
-    run_count_len = max([len(str(i['run_count'])) for i in shortcuts])
+    id_len = max([calculate_display_length(i['id']) for i in shortcuts])
+    type_len = max([calculate_display_length(i['type']) for i in shortcuts])
+    path_len = max([calculate_display_length(i['path']) for i in shortcuts])
+
+    run_count_len = max([calculate_display_length(str(i['run_count'])) for i in shortcuts])
     
+    def column_format(x: str, expect_real_len: int):
+        real_len = len(x)
+        display_len = calculate_display_length(x)
+        just_len = expect_real_len - (display_len - real_len) // 2 + 1
+        return x.ljust(just_len)
+
     for shortcut in shortcuts:
-        print(f'{shortcut['id']:<{id_len + 1}} {shortcut['type']:<{type_len + 1}} {shortcut['path']:<{path_len + 1}} {shortcut['run_count']:<{run_count_len + 1}}', file=stream)
+        print(f'{column_format(shortcut['id'], id_len)} {column_format(shortcut['type'], type_len)} {column_format(shortcut['path'], path_len)} {column_format(str(shortcut['run_count']), run_count_len)}', file=stream)
     
 # parser.add_argument('shortcut_id_part', type=str, help='Non-contiguous substring of shortcut ID')
 
