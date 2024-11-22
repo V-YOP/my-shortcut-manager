@@ -108,7 +108,7 @@ def id_match(id_part: Optional[str], id: str, ignore_case = True) -> bool:
 
 script_name = Path(__file__).name
 parser = argparse.ArgumentParser(
-    description="A Shortcut Manager for Opening file or url with simple command", # 描述，在帮助命令中显示
+    description="A Shortcut Manager for Opening file or url with simple command, see https://github.com/V-YOP/my-shortcut-manager", # 描述，在帮助命令中显示
     epilog=f"Example usage: {script_name} some_shortcut_id_part; {script_name} _ls" # 例子，在帮助命令中显示
 )
 
@@ -187,7 +187,7 @@ def format_print(shortcuts: list[Shortcut], with_header: bool = False, stream = 
         return x.ljust(just_len)
 
     for shortcut in shortcuts:
-        print(f'{column_format(shortcut['id'], id_len)} {column_format(shortcut['type'], type_len)} {column_format(shortcut['path'], path_len)} {column_format(str(shortcut['run_count']), run_count_len)}', file=stream)
+        print(f'{column_format(shortcut['id'], id_len)} {column_format(shortcut['type'], type_len)} {column_format(shortcut['path'], path_len)} {shortcut['run_count']:<{run_count_len + 1}}', file=stream)
     
 # parser.add_argument('shortcut_id_part', type=str, help='Non-contiguous substring of shortcut ID')
 
