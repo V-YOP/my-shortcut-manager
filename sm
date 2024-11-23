@@ -7,6 +7,7 @@ import argparse
 import os
 import platform
 import subprocess
+import re
 from typing import Literal, Optional, TypedDict
 
 def main():
@@ -62,6 +63,7 @@ class Shortcut(TypedDict):
     type: Literal['URL', 'FILE', 'CMD']
     path: str
     run_count: int
+    arguments: list[str]
 
 class Config(TypedDict):
     shortcuts: list[Shortcut]
@@ -116,7 +118,10 @@ subparsers = parser.add_subparsers(title='COMMAND', required=True, dest='command
 
 run_cmd = subparsers.add_parser('_run', help='Run shortcut by shortcut id subsequence (default command when first argument is not startswith _)', description='Run shortcut by shortcut id subsequence, throw errors when ambiguous shortcuts founded. try to alias this')
 run_cmd.add_argument('shortcut_id_part', type=str, help='Non-contiguous substring of shortcut ID')
-def _run(shortcut_id_part: str):
+run_cmd.add_argument('additional_arguments', type=str, nargs=argparse.ZERO_OR_MORE, help='Additional arguments for Command shortcut')
+def _run(shortcut_id_part: str, additional_arguments: list[str]):
+    if not additional_arguments:
+        additional_arguments = []
     conf = read_config()
     valid_shortcuts = [i for i in conf['shortcuts'] if id_match(shortcut_id_part, i['id'])]
     if len(valid_shortcuts) == 0:
@@ -126,10 +131,16 @@ def _run(shortcut_id_part: str):
         print('Multiple shortcuts matched', file=sys.stderr)
         format_print(valid_shortcuts, stream=sys.stderr)
         sys.exit(1)
-    open_with_default(valid_shortcuts[0]['path'])
-    valid_shortcuts[0]['run_count'] += 1
+    shortcut = valid_shortcuts[0]
+    if valid_shortcuts[0]['type'] in ('URL', 'FILE'):
+        open_with_default(shortcut['path'])
+    else:
+        # does not wait for it's exit
+        subprocess.Popen([shortcut['path'], *shortcut['arguments'], *additional_arguments], shell=True, start_new_session=True, creationflags=8 if platform.system() == "Windows" else 0)
+    shortcut['run_count'] += 1
     save_config(conf)
-    print(f'match "{valid_shortcuts[0]["id"]}"')
+    print(f'match "{shortcut["id"]}"')
+    sys.exit(0)
 
 ls_cmd = subparsers.add_parser('_ls', help='List shortcuts')
 ls_cmd.add_argument('shortcut_id_part', type=str, nargs=argparse.OPTIONAL, help='Non-contiguous substring of shortcut ID')
@@ -145,18 +156,56 @@ def _ls(shortcut_id_part: Optional[str]):
     #     sys.exit(0)
     format_print(valid_shortcuts, True)
 
-add_file_cmd = subparsers.add_parser('_add_file', help='Add file shortcut')
-add_file_cmd.add_argument('shortcut_id', type=str, help='Shortcut ID')
-add_file_cmd.add_argument('shortcut_path', type=str, help='Shortcut Path')
-def _add_file(shortcut_id: str, shortcut_path: str):
+add_cmd = subparsers.add_parser('_add', help='Add file or url shortcut')
+add_cmd.add_argument('shortcut_id', type=str, help='Shortcut ID')
+add_cmd.add_argument('shortcut_path', type=str, help='Shortcut Path, if match regex /^(.*?):/ , this shortcut will be treated as URL rather than file')
+def _add(shortcut_id: str, shortcut_path: str):
+    conf = read_config()
+    if shortcut_id in [i['id'] for i in conf['shortcuts']]:
+        print(f"Duplicated shortcut id '{shortcut_id}'")
+        sys.exit(1)
+    
+    # for URL
+    if re.match(r'^(.+?):', shortcut_path):
+        conf['shortcuts'].append({'id': shortcut_id, 'type': 'URL', 'path': shortcut_path, 'run_count': 0, 'arguments': []})
+        save_config(conf)
+        return
+    
+    # for FILE
     if not Path(shortcut_path).exists():
         print(f"file '{shortcut_path}' does not exist", file=sys.stderr)
         sys.exit(1)
-    conf = read_config()
     if next((i for i in conf['shortcuts'] if i['id'] == shortcut_id), None):
         print(f"duplicate shortcut id '{shortcut_path}'", file=sys.stderr)
         sys.exit(1)
-    conf['shortcuts'].append({'id': shortcut_id, 'type': 'FILE', 'path': shortcut_path, 'run_count': 0})
+    conf['shortcuts'].append({'id': shortcut_id, 'type': 'FILE', 'path': str(Path(shortcut_path).resolve(True)), 'run_count': 0, 'arguments': []})
+    save_config(conf)
+    return
+
+add_cmd_cmd = subparsers.add_parser('_add_cmd', help='Add Command shortcut')
+add_cmd_cmd.add_argument('shortcut_id', type=str, help='Shortcut ID')
+add_cmd_cmd.add_argument('shortcut_path', type=str, help='Shortcut Path, can be filepath or command name if it\'s in PATH')
+add_cmd_cmd.add_argument('other_arguments', type=str, nargs=argparse.ZERO_OR_MORE, help="Shortcut initial arguments, the user can give additional arguments when run cmd shortcuts")
+
+def _add_cmd(shortcut_id: str, shortcut_path: str, other_arguments: list[str]):
+    conf = read_config()
+    if shortcut_id in [i['id'] for i in conf['shortcuts']]:
+        print(f"Duplicated shortcut id '{shortcut_id}'")
+        sys.exit(1)
+    if not other_arguments:
+        other_arguments = []
+
+    # for CMD
+    import shutil
+    if (cmd_path := Path(shortcut_path)).exists():
+        pass
+    elif (cmd_path_str := shutil.which(shortcut_path)):
+        cmd_path = Path(cmd_path_str)
+    else:
+        print(f"Command '{shortcut_path}' cannot be found in neither file system nor $PATH", file=sys.stderr)
+        sys.exit(1)
+        
+    conf['shortcuts'].append({'id': shortcut_id, 'type': 'CMD', 'path': str(cmd_path.resolve()), 'run_count': 0, 'arguments': other_arguments})
     save_config(conf)
 
 entries_cmd = subparsers.add_parser('_entries', help='get all entries for auto-completation')
@@ -168,6 +217,16 @@ def _entries():
     for i in cmds:
         print(i)
     
+rm_cmd = subparsers.add_parser('_rm', help='Remove shortcut')
+rm_cmd.add_argument('shortcut_id', type=str, help='Shortcut ID')
+def _rm(shortcut_id: str):
+    conf = read_config()
+    matched = next((i for i, v in enumerate(conf['shortcuts']) if v['id'] == shortcut_id), None)
+    if not matched:
+        print(f"Shortcut '{shortcut_id}' not found", file=sys.stderr)
+        sys.exit(1)
+    del conf['shortcuts'][matched]
+    save_config(conf)
 
 def format_print(shortcuts: list[Shortcut], with_header: bool = False, stream = sys.stdout):
     if with_header:

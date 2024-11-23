@@ -9,7 +9,12 @@ Add it to PATH first.
 ```sh
 sm bas      # open the shortcut whose non-contiguous substring is 'bas'
 sm _ls      # list all shortcuts
-sm _add_file 'krita_files' 'D:/kra'  # add shortcut entry
+sm _add 'krita_files' 'D:/kra'  # add shortcut entry
+sm _add 'google' 'https://google.com'  # add shortcut entry
+
+sm _add_cmd my_script_id python my_script_path my_script_args # add command shortcut
+sm msi some_additional_arg # run command shortcut with additional_args
+sm _rm my_script_id # remove shortcut by exact id
 sm -h       # help
 sm _ls -h   # _ls's help
 ```
