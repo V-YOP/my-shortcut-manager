@@ -12,7 +12,7 @@ sm _ls      # list all shortcuts
 sm _add 'krita_files' 'D:/kra'  # add shortcut entry
 sm _add 'google' 'https://google.com'  # add shortcut entry
 
-sm _add_cmd my_script_id python my_script_path my_script_args # add command shortcut
+sm _add_cmd -- my_script_id python my_script_path --my_script_args # add command shortcut
 sm msi some_additional_arg # run command shortcut with additional_args
 sm _rm my_script_id # remove shortcut by exact id
 sm -h       # help
