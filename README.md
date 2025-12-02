@@ -43,3 +43,11 @@ _sm_complete() {
 # 将补全函数绑定到命令 `sm`
 complete -F _sm_complete sm
 ```
+
+# GUI version (for windows, for Win+R)
+
+A helper binary file is needed for Win+R to run the script.
+
+```sh
+g++ -mwindows -O2 -s -o gsm.exe gsm_launcher.cpp
+```

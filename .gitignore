@@ -1,5 +1,6 @@
 # Byte-compiled / optimized / DLL files
 sm_config.json
+gsm.exe
 __pycache__/
 *.py[cod]
 *$py.class

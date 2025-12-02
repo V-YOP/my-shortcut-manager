@@ -64,9 +64,18 @@ class Shortcut(TypedDict):
     path: str
     run_count: int
     arguments: list[str]
+    icon: str | None # icon filepath
 
 class Config(TypedDict):
     shortcuts: list[Shortcut]
+
+def run_shortcut(shortcut: Shortcut, additional_arguments: list[str]):
+    if shortcut['type'] in ('URL', 'FILE'):
+        open_with_default(shortcut['path'])
+    else:
+        # does not wait for it's exit
+        subprocess.Popen([shortcut['path'], *shortcut['arguments'], *additional_arguments], shell=True, start_new_session=True, creationflags=8 if platform.system() == "Windows" else 0)
+    
 
 def config_location():
     if 'SM_CONF_LOCATION' in os.environ:
@@ -132,11 +141,7 @@ def _run(shortcut_id_part: str, additional_arguments: list[str]):
         format_print(valid_shortcuts, stream=sys.stderr)
         sys.exit(1)
     shortcut = valid_shortcuts[0]
-    if valid_shortcuts[0]['type'] in ('URL', 'FILE'):
-        open_with_default(shortcut['path'])
-    else:
-        # does not wait for it's exit
-        subprocess.Popen([shortcut['path'], *shortcut['arguments'], *additional_arguments], shell=True, start_new_session=True, creationflags=8 if platform.system() == "Windows" else 0)
+    run_shortcut(shortcut, additional_arguments)
     shortcut['run_count'] += 1
     save_config(conf)
     print(f'match "{shortcut["id"]}"')
