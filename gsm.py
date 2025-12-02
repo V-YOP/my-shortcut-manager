@@ -206,13 +206,19 @@ class ShortcutLauncher:
         self.listbox.bind('<Double-Button-1>', lambda e: self.execute_selected())
         self.listbox.bind('<Return>', lambda e: self.execute_selected())
         self.listbox.bind('<ButtonRelease-1>', lambda e: self.on_listbox_click())
+        self.listbox.bind('<Escape>', lambda e: self.root.destroy())
         
         # 键盘导航
         self.input_entry.bind('<Up>', lambda e: self.navigate_list(-1))
         self.input_entry.bind('<Down>', lambda e: self.navigate_list(1))
         self.listbox.bind('<Up>', lambda e: self.navigate_list(-1))
         self.listbox.bind('<Down>', lambda e: self.navigate_list(1))
-        
+        # 新增：Ctrl+J 和 Ctrl+K 导航
+        self.input_entry.bind('<Control-j>', lambda e: self.navigate_list(1))   # Ctrl+J 向下
+        self.input_entry.bind('<Control-k>', lambda e: self.navigate_list(-1))  # Ctrl+K 向上
+        self.listbox.bind('<Control-j>', lambda e: self.navigate_list(1))       # Ctrl+J 向下
+        self.listbox.bind('<Control-k>', lambda e: self.navigate_list(-1))      # Ctrl+K 向上
+
         # 窗口事件
         self.root.bind('<Control-q>', lambda e: self.root.destroy())
         self.root.bind('<Control-w>', lambda e: self.root.destroy())
